@@ -22,6 +22,9 @@ inputs:
     description: 'Label to add to approved PRs'
     required: false
     default: 'dependabot-approved'
+  ignore-regex:
+    description: 'Regex patterns to ignore PRs (comma-separated). If any pattern matches PR title, PR will be skipped.'
+    required: false
   pr-number:
     description: 'PR number (for manual dispatch workflows)'
     required: false
@@ -100,8 +103,59 @@ runs:
           echo "⏭️ Skipping: dependency type $DEPENDENCY_TYPE doesn't match target $TARGET_TYPE"
         fi
 
+    - name: Check ignore regex patterns
+      id: check_ignore_regex
+      if: steps.check_dependency.outputs.should_process == 'true' && inputs.ignore-regex != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        PR_TITLE_EVENT: ${{ github.event.pull_request.title }}
+        IGNORE_REGEX: ${{ inputs.ignore-regex }}
+      run: |
+        # Get PR title (use env var for pull_request events to handle special chars)
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          PR_TITLE="$PR_TITLE_EVENT"
+        else
+          PR_TITLE=$(gh pr view "${{ steps.check_dependabot.outputs.pr_number }}" --repo "${{ github.repository }}" --json title --jq '.title')
+        fi
+        
+        echo "PR Title: $PR_TITLE"
+        
+        # Check if any regex pattern matches
+        if [ -n "$IGNORE_REGEX" ]; then
+          IFS=',' read -ra PATTERNS <<< "$IGNORE_REGEX"
+          for pattern in "${PATTERNS[@]}"; do
+            # Trim whitespace
+            pattern=$(echo "$pattern" | xargs)
+            if [ -n "$pattern" ]; then
+              echo "Checking pattern: '$pattern'"
+              if echo "$PR_TITLE" | grep -qE "$pattern"; then
+                echo "❌ PR title matches ignore pattern: '$pattern'"
+                echo "should_process=false" >> $GITHUB_OUTPUT
+                echo "⏭️ Skipping PR due to ignore pattern match"
+                exit 0
+              fi
+            fi
+          done
+        fi
+        
+        echo "✅ No ignore patterns matched"
+        echo "should_process=true" >> $GITHUB_OUTPUT
+
+    - name: Set final processing flag
+      id: final_processing
+      if: steps.check_dependency.outputs.should_process == 'true'
+      shell: bash
+      run: |
+        # If ignore regex step didn't run, use the original should_process value
+        if [ "${{ inputs.ignore-regex }}" = "" ]; then
+          echo "should_process=${{ steps.check_dependency.outputs.should_process }}" >> $GITHUB_OUTPUT
+        else
+          echo "should_process=${{ steps.check_ignore_regex.outputs.should_process }}" >> $GITHUB_OUTPUT
+        fi
+
     - name: Create label if it doesn't exist
-      if: steps.check_dependency.outputs.should_process == 'true' && inputs.add-label != ''
+      if: steps.final_processing.outputs.should_process == 'true' && inputs.add-label != ''
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
@@ -120,7 +174,7 @@ runs:
         fi
 
     - name: Add label to PR
-      if: steps.check_dependency.outputs.should_process == 'true' && inputs.add-label != ''
+      if: steps.final_processing.outputs.should_process == 'true' && inputs.add-label != ''
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
@@ -129,7 +183,7 @@ runs:
         gh pr edit "${{ steps.check_dependabot.outputs.pr_url }}" --add-label "${{ inputs.add-label }}"
 
     - name: Approve PR
-      if: steps.check_dependency.outputs.should_process == 'true'
+      if: steps.final_processing.outputs.should_process == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
@@ -157,7 +211,7 @@ runs:
         fi
 
     - name: Merge PR
-      if: steps.check_dependency.outputs.should_process == 'true'
+      if: steps.final_processing.outputs.should_process == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}

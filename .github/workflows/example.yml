@@ -63,5 +63,6 @@ jobs:
           dependency-type: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dependency_type || 'direct:production' }}
           merge-method: 'squash'
           add-label: ${{ github.event_name == 'workflow_dispatch' && 'manual-approval' || 'dependabot-approved' }}
+          ignore-regex: '.*security.*,.*major.*'
           pr-number: ${{ github.event_name == 'workflow_dispatch' && steps.pr_info.outputs.pr_number || '' }}
           pr-url: ${{ github.event_name == 'workflow_dispatch' && steps.pr_info.outputs.pr_url || '' }}
