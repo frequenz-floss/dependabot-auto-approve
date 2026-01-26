@@ -66,6 +66,7 @@ jobs:
 | `merge-method` | Merge method | No | `squash` |
 | `auto-merge` | Enable auto-merge | No | `false` |
 | `add-label` | Label for approved PRs | No | `dependabot-approved` |
+| `ignore-regex-pr-title` | Regex patterns to ignore PRs (comma-separated) | No | |
 | `pr-number` | PR number (for manual dispatch workflows) | No | |
 | `pr-url` | PR URL (for manual dispatch workflows) | No | |
 
@@ -80,6 +81,15 @@ jobs:
 - `squash` - squash commits into one
 - `merge` - regular merge
 - `rebase` - rebase and merge
+
+### Ignore regex patterns
+
+You can specify one or more regex patterns (comma-separated) to skip auto-approval for certain PRs. If any pattern matches the PR title, the PR will be ignored.
+
+Examples:
+- `ignore-regex-pr-title: '.*security.*,.*major.*'` - Skip PRs with "security" or "major" in the title
+- `ignore-regex-pr-title: '^Bump.*from.*to.*'` - Skip PRs with specific version bump patterns
+- `ignore-regex-pr-title: '.*breaking.*,.*deprecated.*'` - Skip PRs with breaking changes or deprecations
 
 ## Requirements
 
@@ -203,6 +213,28 @@ jobs:
           dependency-type: 'all'
           auto-merge: 'true'
           add-label: 'auto-merged'
+```
+
+### Skip security and major updates
+
+```yaml
+name: Dependabot Auto Manage
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
+    steps:
+      - uses: ad/dependabot-auto-approve@v1
+        with:
+          dependency-type: 'direct:production'
+          ignore-regex-pr-title: '.*security.*,.*major.*'
+          merge-method: 'squash'
 ```
 
 ### Manual trigger for specific PRs
