@@ -66,7 +66,7 @@ jobs:
 | `merge-method` | Merge method | No | `squash` |
 | `auto-merge` | Enable auto-merge | No | `false` |
 | `add-label` | Label for approved PRs | No | `dependabot-approved` |
-| `ignore-regex` | Regex patterns to ignore PRs (comma-separated) | No | |
+| `ignore-regex-pr-title` | Regex patterns to ignore PRs (comma-separated) | No | |
 | `pr-number` | PR number (for manual dispatch workflows) | No | |
 | `pr-url` | PR URL (for manual dispatch workflows) | No | |
 
@@ -87,9 +87,9 @@ jobs:
 You can specify one or more regex patterns (comma-separated) to skip auto-approval for certain PRs. If any pattern matches the PR title, the PR will be ignored.
 
 Examples:
-- `ignore-regex: '.*security.*,.*major.*'` - Skip PRs with "security" or "major" in the title
-- `ignore-regex: '^Bump.*from.*to.*'` - Skip PRs with specific version bump patterns
-- `ignore-regex: '.*breaking.*,.*deprecated.*'` - Skip PRs with breaking changes or deprecations
+- `ignore-regex-pr-title: '.*security.*,.*major.*'` - Skip PRs with "security" or "major" in the title
+- `ignore-regex-pr-title: '^Bump.*from.*to.*'` - Skip PRs with specific version bump patterns
+- `ignore-regex-pr-title: '.*breaking.*,.*deprecated.*'` - Skip PRs with breaking changes or deprecations
 
 ## Requirements
 
@@ -233,7 +233,7 @@ jobs:
       - uses: ad/dependabot-auto-approve@v1
         with:
           dependency-type: 'direct:production'
-          ignore-regex: '.*security.*,.*major.*'
+          ignore-regex-pr-title: '.*security.*,.*major.*'
           merge-method: 'squash'
 ```
 

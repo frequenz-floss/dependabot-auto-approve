@@ -22,7 +22,7 @@ inputs:
     description: 'Label to add to approved PRs'
     required: false
     default: 'dependabot-approved'
-  ignore-regex:
+  ignore-regex-pr-title:
     description: 'Regex patterns to ignore PRs (comma-separated). If any pattern matches PR title, PR will be skipped.'
     required: false
   pr-number:
@@ -105,12 +105,12 @@ runs:
 
     - name: Check ignore regex patterns
       id: check_ignore_regex
-      if: steps.check_dependency.outputs.should_process == 'true' && inputs.ignore-regex != ''
+      if: steps.check_dependency.outputs.should_process == 'true' && inputs.ignore-regex-pr-title != ''
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
         PR_TITLE_EVENT: ${{ github.event.pull_request.title }}
-        IGNORE_REGEX: ${{ inputs.ignore-regex }}
+        IGNORE_REGEX: ${{ inputs.ignore-regex-pr-title }}
       run: |
         # Get PR title (use env var for pull_request events to handle special chars)
         if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -148,7 +148,7 @@ runs:
       shell: bash
       run: |
         # If ignore regex step didn't run, use the original should_process value
-        if [ "${{ inputs.ignore-regex }}" = "" ]; then
+        if [ "${{ inputs.ignore-regex-pr-title }}" = "" ]; then
           echo "should_process=${{ steps.check_dependency.outputs.should_process }}" >> $GITHUB_OUTPUT
         else
           echo "should_process=${{ steps.check_ignore_regex.outputs.should_process }}" >> $GITHUB_OUTPUT
