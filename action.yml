@@ -53,7 +53,7 @@ runs:
           echo "pr_number=$PR_NUMBER_INPUT" >> $GITHUB_OUTPUT
           echo "pr_url=$PR_URL_INPUT" >> $GITHUB_OUTPUT
           echo "✅ Manual dispatch: processing PR #$PR_NUMBER_INPUT"
-        elif [ "$EVENT_NAME" = "pull_request" ]; then
+        elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
           # For pull_request events, check the user from event
           if [[ "$PR_USER_LOGIN" = "dependabot[bot]" || "$PR_USER_LOGIN" = "app/dependabot" ]]; then
             echo "is_dependabot=true" >> $GITHUB_OUTPUT
@@ -72,12 +72,12 @@ runs:
 
     - name: Get dependency metadata
       id: metadata
-      if: steps.check_dependabot.outputs.is_dependabot == 'true' && github.event_name == 'pull_request'
+      if: steps.check_dependabot.outputs.is_dependabot == 'true' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
       uses: dependabot/fetch-metadata@v2
       
     - name: Set dependency type for manual dispatch
       id: manual_metadata
-      if: steps.check_dependabot.outputs.is_dependabot == 'true' && github.event_name != 'pull_request'
+      if: steps.check_dependabot.outputs.is_dependabot == 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
       shell: bash
       env:
         TARGET_TYPE_INPUT: ${{ inputs.dependency-type }}
@@ -97,7 +97,7 @@ runs:
         TARGET_TYPE_INPUT: ${{ inputs.dependency-type }}
       run: |
         # Get dependency type from appropriate source
-        if [ "$EVENT_NAME" = "pull_request" ]; then
+        if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
           DEPENDENCY_TYPE="$DEPENDENCY_TYPE_EVENT"
         else
           DEPENDENCY_TYPE="$DEPENDENCY_TYPE_MANUAL"
@@ -129,7 +129,7 @@ runs:
         REPO: ${{ github.repository }}
       run: |
         # Get PR title (use env var for pull_request events to handle special chars)
-        if [ "$EVENT_NAME" = "pull_request" ]; then
+        if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
           PR_TITLE="$PR_TITLE_EVENT"
         else
           PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title --jq '.title')

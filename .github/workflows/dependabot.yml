@@ -1,8 +1,12 @@
 # Example workflow for using Dependabot Auto Manage Action
 
 name: Dependabot Auto Manage
-on: 
-  pull_request:
+on:
+  # SECURITY WARNING: pull_request_target runs in the base repo context and
+  # can read secrets. Do not check out or execute code from the PR. Pin all
+  # third-party actions by SHA. See:
+  # https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+  pull_request_target:
   workflow_dispatch:
     inputs:
       pr_number:
@@ -27,7 +31,7 @@ jobs:
   dependabot:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot')) ||
+      (github.event_name == 'pull_request_target' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot')) ||
       (github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout (for manual dispatch)
