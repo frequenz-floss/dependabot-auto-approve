@@ -29,7 +29,7 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
     steps:
       - name: Dependabot auto-manage
-        uses: ad/dependabot-auto-approve@v1
+        uses: frequenz-floss/dependabot-auto-approve@v1
 ```
 
 ### Advanced configuration
@@ -48,7 +48,7 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
     steps:
       - name: Dependabot auto-manage
-        uses: ad/dependabot-auto-approve@v1
+        uses: frequenz-floss/dependabot-auto-approve@v1
         with:
           github-token: ${{ secrets.PAT_TOKEN }}    # Required for PR approval
           dependency-type: 'direct:production'      # or 'direct:development', 'all'
@@ -113,7 +113,7 @@ For **approval functionality**, you need a Personal Access Token (PAT) because `
 4. **Use it in the workflow**:
 
 ```yaml
-- uses: ad/dependabot-auto-approve@v1
+- uses: frequenz-floss/dependabot-auto-approve@v1
   with:
     github-token: ${{ secrets.PAT_TOKEN }}  # Use your PAT secret name
 ```
@@ -143,14 +143,14 @@ This happens when using the default `GITHUB_TOKEN`. Solutions:
 
 1. **Use a Personal Access Token**:
    ```yaml
-   - uses: ad/dependabot-auto-approve@v1
+   - uses: frequenz-floss/dependabot-auto-approve@v1
      with:
        github-token: ${{ secrets.PAT_TOKEN }}
    ```
 
 2. **Or disable approval and rely on auto-merge** (if branch protection allows):
    ```yaml
-   - uses: ad/dependabot-auto-approve@v1
+   - uses: frequenz-floss/dependabot-auto-approve@v1
      with:
        auto-merge: 'true'  # Requires branch protection rules
    ```
@@ -187,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
     steps:
-      - uses: ad/dependabot-auto-approve@v1
+      - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
           dependency-type: 'direct:production'
           merge-method: 'squash'
@@ -208,7 +208,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
     steps:
-      - uses: ad/dependabot-auto-approve@v1
+      - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
           dependency-type: 'all'
           auto-merge: 'true'
@@ -230,7 +230,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot'
     steps:
-      - uses: ad/dependabot-auto-approve@v1
+      - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
           dependency-type: 'direct:production'
           ignore-regex-pr-title: '.*security.*,.*major.*'
@@ -297,7 +297,7 @@ jobs:
           echo "pr_number=$(echo $PR_DATA | jq -r '.number')" >> $GITHUB_OUTPUT
           echo "pr_url=$(echo $PR_DATA | jq -r '.url')" >> $GITHUB_OUTPUT
           
-      - uses: ad/dependabot-auto-approve@v1.3.2
+      - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
           dependency-type: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dependency_type || 'direct:production' }}
           merge-method: 'squash'
