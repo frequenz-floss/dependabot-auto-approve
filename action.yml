@@ -40,23 +40,29 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
+        PR_NUMBER_INPUT: ${{ inputs.pr-number }}
+        PR_URL_INPUT: ${{ inputs.pr-url }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_USER_LOGIN: ${{ github.event.pull_request.user.login }}
+        PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
+        PR_URL_EVENT: ${{ github.event.pull_request.html_url }}
       run: |
         # Handle manual dispatch with provided PR details
-        if [ -n "${{ inputs.pr-number }}" ] && [ -n "${{ inputs.pr-url }}" ]; then
+        if [ -n "$PR_NUMBER_INPUT" ] && [ -n "$PR_URL_INPUT" ]; then
           echo "is_dependabot=true" >> $GITHUB_OUTPUT
-          echo "pr_number=${{ inputs.pr-number }}" >> $GITHUB_OUTPUT
-          echo "pr_url=${{ inputs.pr-url }}" >> $GITHUB_OUTPUT
-          echo "✅ Manual dispatch: processing PR #${{ inputs.pr-number }}"
-        elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "pr_number=$PR_NUMBER_INPUT" >> $GITHUB_OUTPUT
+          echo "pr_url=$PR_URL_INPUT" >> $GITHUB_OUTPUT
+          echo "✅ Manual dispatch: processing PR #$PR_NUMBER_INPUT"
+        elif [ "$EVENT_NAME" = "pull_request" ]; then
           # For pull_request events, check the user from event
-          if [[ "${{ github.event.pull_request.user.login }}" = "dependabot[bot]" || "${{ github.event.pull_request.user.login }}" = "app/dependabot" ]]; then
+          if [[ "$PR_USER_LOGIN" = "dependabot[bot]" || "$PR_USER_LOGIN" = "app/dependabot" ]]; then
             echo "is_dependabot=true" >> $GITHUB_OUTPUT
-            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "pr_url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
-            echo "✅ Automatic: processing Dependabot PR #${{ github.event.pull_request.number }}"
+            echo "pr_number=$PR_NUMBER_EVENT" >> $GITHUB_OUTPUT
+            echo "pr_url=$PR_URL_EVENT" >> $GITHUB_OUTPUT
+            echo "✅ Automatic: processing Dependabot PR #$PR_NUMBER_EVENT"
           else
             echo "is_dependabot=false" >> $GITHUB_OUTPUT
-            echo "❌ PR is not from Dependabot (author: ${{ github.event.pull_request.user.login }})"
+            echo "❌ PR is not from Dependabot (author: $PR_USER_LOGIN)"
             exit 0
           fi
         else
@@ -73,24 +79,31 @@ runs:
       id: manual_metadata
       if: steps.check_dependabot.outputs.is_dependabot == 'true' && github.event_name != 'pull_request'
       shell: bash
+      env:
+        TARGET_TYPE_INPUT: ${{ inputs.dependency-type }}
       run: |
         # For manual dispatch, use the target dependency type directly
-        echo "dependency-type=${{ inputs.dependency-type }}" >> $GITHUB_OUTPUT
-        echo "📋 Manual dispatch: processing as ${{ inputs.dependency-type }} dependency"
+        echo "dependency-type=$TARGET_TYPE_INPUT" >> $GITHUB_OUTPUT
+        echo "📋 Manual dispatch: processing as $TARGET_TYPE_INPUT dependency"
 
     - name: Check dependency type
       id: check_dependency
       if: steps.check_dependabot.outputs.is_dependabot == 'true'
       shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        DEPENDENCY_TYPE_EVENT: ${{ steps.metadata.outputs.dependency-type }}
+        DEPENDENCY_TYPE_MANUAL: ${{ steps.manual_metadata.outputs.dependency-type }}
+        TARGET_TYPE_INPUT: ${{ inputs.dependency-type }}
       run: |
         # Get dependency type from appropriate source
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          DEPENDENCY_TYPE="${{ steps.metadata.outputs.dependency-type }}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          DEPENDENCY_TYPE="$DEPENDENCY_TYPE_EVENT"
         else
-          DEPENDENCY_TYPE="${{ steps.manual_metadata.outputs.dependency-type }}"
+          DEPENDENCY_TYPE="$DEPENDENCY_TYPE_MANUAL"
         fi
         
-        TARGET_TYPE="${{ inputs.dependency-type }}"
+        TARGET_TYPE="$TARGET_TYPE_INPUT"
         
         echo "Dependency type: $DEPENDENCY_TYPE"
         echo "Target type: $TARGET_TYPE"
@@ -111,12 +124,15 @@ runs:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
         PR_TITLE_EVENT: ${{ github.event.pull_request.title }}
         IGNORE_REGEX: ${{ inputs.ignore-regex-pr-title }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER: ${{ steps.check_dependabot.outputs.pr_number }}
+        REPO: ${{ github.repository }}
       run: |
         # Get PR title (use env var for pull_request events to handle special chars)
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
+        if [ "$EVENT_NAME" = "pull_request" ]; then
           PR_TITLE="$PR_TITLE_EVENT"
         else
-          PR_TITLE=$(gh pr view "${{ steps.check_dependabot.outputs.pr_number }}" --repo "${{ github.repository }}" --json title --jq '.title')
+          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title --jq '.title')
         fi
         
         echo "PR Title: $PR_TITLE"
@@ -146,12 +162,16 @@ runs:
       id: final_processing
       if: steps.check_dependency.outputs.should_process == 'true'
       shell: bash
+      env:
+        IGNORE_REGEX_INPUT: ${{ inputs.ignore-regex-pr-title }}
+        SHOULD_PROCESS_DEP: ${{ steps.check_dependency.outputs.should_process }}
+        SHOULD_PROCESS_IGNORE: ${{ steps.check_ignore_regex.outputs.should_process }}
       run: |
         # If ignore regex step didn't run, use the original should_process value
-        if [ "${{ inputs.ignore-regex-pr-title }}" = "" ]; then
-          echo "should_process=${{ steps.check_dependency.outputs.should_process }}" >> $GITHUB_OUTPUT
+        if [ "$IGNORE_REGEX_INPUT" = "" ]; then
+          echo "should_process=$SHOULD_PROCESS_DEP" >> $GITHUB_OUTPUT
         else
-          echo "should_process=${{ steps.check_ignore_regex.outputs.should_process }}" >> $GITHUB_OUTPUT
+          echo "should_process=$SHOULD_PROCESS_IGNORE" >> $GITHUB_OUTPUT
         fi
 
     - name: Create label if it doesn't exist
@@ -159,16 +179,18 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
+        LABEL_NAME_INPUT: ${{ inputs.add-label }}
+        REPO: ${{ github.repository }}
       run: |
-        LABEL_NAME="${{ inputs.add-label }}"
+        LABEL_NAME="$LABEL_NAME_INPUT"
         set -euo pipefail
         
         # Check if label exists
-        EXISTING_LABEL=$(gh label list --repo "${{ github.repository }}" --limit 1000 --json name --jq ".[] | select(.name==\"$LABEL_NAME\") | .name" || echo "")
+        EXISTING_LABEL=$(gh label list --repo "$REPO" --limit 1000 --json name --jq ".[] | select(.name==\"$LABEL_NAME\") | .name" || echo "")
         
         if [ -z "$EXISTING_LABEL" ]; then
           echo "Creating label: $LABEL_NAME"
-          gh label create "$LABEL_NAME" --repo "${{ github.repository }}" --color "0E8A16" --description "Auto-approved Dependabot PRs"
+          gh label create "$LABEL_NAME" --repo "$REPO" --color "0E8A16" --description "Auto-approved Dependabot PRs"
         else
           echo "Label already exists: $LABEL_NAME"
         fi
@@ -178,21 +200,26 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
+        LABEL_NAME_INPUT: ${{ inputs.add-label }}
+        PR_NUMBER: ${{ steps.check_dependabot.outputs.pr_number }}
+        PR_URL: ${{ steps.check_dependabot.outputs.pr_url }}
       run: |
-        echo "Adding label '${{ inputs.add-label }}' to PR #${{ steps.check_dependabot.outputs.pr_number }}"
-        gh pr edit "${{ steps.check_dependabot.outputs.pr_url }}" --add-label "${{ inputs.add-label }}"
+        echo "Adding label '$LABEL_NAME_INPUT' to PR #$PR_NUMBER"
+        gh pr edit "$PR_URL" --add-label "$LABEL_NAME_INPUT"
 
     - name: Approve PR
       if: steps.final_processing.outputs.should_process == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
+        PR_NUMBER: ${{ steps.check_dependabot.outputs.pr_number }}
+        REPO: ${{ github.repository }}
       run: |
-        echo "Approving PR #${{ steps.check_dependabot.outputs.pr_number }}"
+        echo "Approving PR #$PR_NUMBER"
         
         # Check if we can approve (requires PAT or specific permissions)
         if gh auth status --hostname github.com 2>/dev/null | grep -q "Token:"; then
-          if gh pr review --repo "${{ github.repository }}" --approve "${{ steps.check_dependabot.outputs.pr_number }}" 2>/dev/null; then
+          if gh pr review --repo "$REPO" --approve "$PR_NUMBER" 2>/dev/null; then
             echo "✅ PR approved successfully"
           else
             echo "⚠️  Could not approve PR. This might be because:"
@@ -215,18 +242,23 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token || github.token }}
+        MERGE_METHOD_INPUT: ${{ inputs.merge-method }}
+        AUTO_MERGE_INPUT: ${{ inputs.auto-merge }}
+        PR_NUMBER: ${{ steps.check_dependabot.outputs.pr_number }}
+        PR_URL: ${{ steps.check_dependabot.outputs.pr_url }}
+        REPO: ${{ github.repository }}
       run: |
-        MERGE_FLAGS="--${{ inputs.merge-method }}"
+        MERGE_FLAGS="--$MERGE_METHOD_INPUT"
         
-        if [ "${{ inputs.auto-merge }}" = "true" ]; then
+        if [ "$AUTO_MERGE_INPUT" = "true" ]; then
           MERGE_FLAGS="$MERGE_FLAGS --auto"
-          echo "Enabling auto-merge for PR #${{ steps.check_dependabot.outputs.pr_number }}"
+          echo "Enabling auto-merge for PR #$PR_NUMBER"
         else
-          echo "Merging PR #${{ steps.check_dependabot.outputs.pr_number }}"
+          echo "Merging PR #$PR_NUMBER"
         fi
         
         # Attempt to merge
-        if gh pr merge --repo "${{ github.repository }}" $MERGE_FLAGS "${{ steps.check_dependabot.outputs.pr_number }}" 2>/dev/null; then
+        if gh pr merge --repo "$REPO" $MERGE_FLAGS "$PR_NUMBER" 2>/dev/null; then
           echo "✅ PR merged successfully"
         else
           echo "⚠️  Could not merge PR. This might be because:"
@@ -236,7 +268,7 @@ runs:
           echo "   4. Required status checks are pending/failing"
           echo ""
           echo "💡 Check the PR status and requirements at:"
-          echo "   ${{ steps.check_dependabot.outputs.pr_url }}"
+          echo "   $PR_URL"
         fi
 
 branding:

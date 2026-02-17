@@ -278,24 +278,28 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
-          PR_AUTHOR=$(gh pr view ${{ github.event.inputs.pr_number }} --repo "${{ github.repository }}" --json author --jq '.author.login')
+          PR_AUTHOR=$(gh pr view "$PR_NUMBER_INPUT" --repo "$REPO" --json author --jq '.author.login')
           if [[ "$PR_AUTHOR" != "dependabot[bot]" && "$PR_AUTHOR" != "app/dependabot" ]]; then
-            echo "❌ PR #${{ github.event.inputs.pr_number }} is not from Dependabot (author: $PR_AUTHOR)"
+            echo "❌ PR #$PR_NUMBER_INPUT is not from Dependabot (author: $PR_AUTHOR)"
             exit 1
           fi
-          echo "✅ PR #${{ github.event.inputs.pr_number }} is from Dependabot"
+          echo "✅ PR #$PR_NUMBER_INPUT is from Dependabot"
           
-      - name: Simulate PR event for manual dispatch
+      - name: Get PR info for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         id: pr_info
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
           # Get PR details and set outputs
-          PR_DATA=$(gh pr view ${{ github.event.inputs.pr_number }} --repo "${{ github.repository }}" --json number,url,author)
-          echo "pr_number=$(echo $PR_DATA | jq -r '.number')" >> $GITHUB_OUTPUT
-          echo "pr_url=$(echo $PR_DATA | jq -r '.url')" >> $GITHUB_OUTPUT
+          PR_DATA=$(gh pr view "$PR_NUMBER_INPUT" --repo "$REPO" --json number,url,author)
+          echo "pr_number=$(echo "$PR_DATA" | jq -r '.number')" >> $GITHUB_OUTPUT
+          echo "pr_url=$(echo "$PR_DATA" | jq -r '.url')" >> $GITHUB_OUTPUT
           
       - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
