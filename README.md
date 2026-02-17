@@ -10,6 +10,7 @@ Automatically approves and merges Dependabot Pull Requests for production depend
 - ✅ Add labels to approved PRs
 - ✅ Support for auto-merge (requires branch protection rules)
 - ✅ Safe PR author verification
+- ✅ Supports pull_request_target workflows when secrets are required
 
 ## Usage
 
@@ -31,6 +32,10 @@ jobs:
       - name: Dependabot auto-manage
         uses: frequenz-floss/dependabot-auto-approve@v1
 ```
+
+Note: If you need to pass a PAT or GitHub App token from secrets, use the
+`pull_request_target` event instead of `pull_request`. See
+[`pull_request_target` and secrets](#pull_request_target-and-secrets) below.
 
 ### Advanced configuration
 
@@ -120,6 +125,68 @@ For **approval functionality**, you need a Personal Access Token (PAT) because `
 
 > **Note**: The action will still work without a PAT, but won't be able to approve PRs. It will add labels and attempt to merge (if no approval is required).
 
+### `pull_request_target` and secrets
+
+If you need to pass a PAT or GitHub App token (for approvals or auto-merge),
+the workflow must be able to read secrets. The `pull_request` event does not
+expose secrets for untrusted PRs, so use `pull_request_target` instead.
+
+`pull_request_target` runs in the base repo context and has access to secrets.
+Treat PR content as untrusted:
+
+- Do not check out or execute code from the PR branch
+- Avoid running dependency installs or scripts from the PR
+- Pin all third-party actions by full commit SHA
+
+More details:
+https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+
+#### GitHub App token (recommended for auto-merge)
+
+1. Create a GitHub App with repository permissions for Contents and Pull
+   requests (and Issues if you use labels).
+2. Install the app on the repository.
+3. Store the App ID and private key as secrets.
+4. Use actions/create-github-app-token to mint a token.
+
+Example:
+
+```yaml
+name: Auto-merge Dependabot PR
+
+on:
+  # SECURITY WARNING: pull_request_target runs in the base repo context and
+  # can read secrets. Do not check out or execute code from the PR. Pin all
+  # third-party actions by SHA. See:
+  # https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+  pull_request_target:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ secrets.DEPENDABOT_APP_ID }}
+          private-key: ${{ secrets.DEPENDABOT_APP_PRIVATE_KEY }}
+
+      - name: Auto-merge Dependabot PR
+        uses: frequenz-floss/dependabot-auto-approve@<commit-sha> # pin to a release commit
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          dependency-type: 'all'
+          auto-merge: 'true'
+          merge-method: 'merge'
+          add-label: 'tool:auto-merged'
+```
+
 ### Auto-merge
 
 To use `auto-merge: 'true'` you need to:
@@ -134,6 +201,8 @@ To use `auto-merge: 'true'` you need to:
 - ✅ Supports both `dependabot[bot]` and `app/dependabot` formats
 - ✅ Filters by dependency type
 - ✅ Uses official `dependabot/fetch-metadata` action
+- ⚠️ If you use `pull_request_target`, do not check out or execute PR code and
+  pin all actions by SHA
 
 ## Troubleshooting
 
@@ -241,8 +310,12 @@ jobs:
 
 ```yaml
 name: Dependabot Auto Manage
-on: 
-  pull_request:
+on:
+  # SECURITY WARNING: pull_request_target runs in the base repo context and
+  # can read secrets. Do not check out or execute code from the PR. Pin all
+  # third-party actions by SHA. See:
+  # https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+  pull_request_target:
   workflow_dispatch:
     inputs:
       pr_number:
@@ -267,7 +340,7 @@ jobs:
   dependabot:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot')) ||
+      (github.event_name == 'pull_request_target' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'app/dependabot')) ||
       (github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout (for manual dispatch)
@@ -278,24 +351,28 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
-          PR_AUTHOR=$(gh pr view ${{ github.event.inputs.pr_number }} --repo "${{ github.repository }}" --json author --jq '.author.login')
+          PR_AUTHOR=$(gh pr view "$PR_NUMBER_INPUT" --repo "$REPO" --json author --jq '.author.login')
           if [[ "$PR_AUTHOR" != "dependabot[bot]" && "$PR_AUTHOR" != "app/dependabot" ]]; then
-            echo "❌ PR #${{ github.event.inputs.pr_number }} is not from Dependabot (author: $PR_AUTHOR)"
+            echo "❌ PR #$PR_NUMBER_INPUT is not from Dependabot (author: $PR_AUTHOR)"
             exit 1
           fi
-          echo "✅ PR #${{ github.event.inputs.pr_number }} is from Dependabot"
+          echo "✅ PR #$PR_NUMBER_INPUT is from Dependabot"
           
-      - name: Simulate PR event for manual dispatch
+      - name: Get PR info for manual dispatch
         if: github.event_name == 'workflow_dispatch'
         id: pr_info
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          REPO: ${{ github.repository }}
         run: |
           # Get PR details and set outputs
-          PR_DATA=$(gh pr view ${{ github.event.inputs.pr_number }} --repo "${{ github.repository }}" --json number,url,author)
-          echo "pr_number=$(echo $PR_DATA | jq -r '.number')" >> $GITHUB_OUTPUT
-          echo "pr_url=$(echo $PR_DATA | jq -r '.url')" >> $GITHUB_OUTPUT
+          PR_DATA=$(gh pr view "$PR_NUMBER_INPUT" --repo "$REPO" --json number,url,author)
+          echo "pr_number=$(echo "$PR_DATA" | jq -r '.number')" >> $GITHUB_OUTPUT
+          echo "pr_url=$(echo "$PR_DATA" | jq -r '.url')" >> $GITHUB_OUTPUT
           
       - uses: frequenz-floss/dependabot-auto-approve@v1
         with:
