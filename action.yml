@@ -73,7 +73,7 @@ runs:
     - name: Get dependency metadata
       id: metadata
       if: steps.check_dependabot.outputs.is_dependabot == 'true' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
-      uses: dependabot/fetch-metadata@v2
+      uses: dependabot/fetch-metadata@v3
       
     - name: Set dependency type for manual dispatch
       id: manual_metadata
